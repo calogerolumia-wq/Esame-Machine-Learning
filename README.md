@@ -256,9 +256,7 @@ La valutazione viene effettuata sia sui task sia sui soggetti. **La classe posit
 
 Le matrici di confusione riportano le classi di riferimento sulle righe e quelle predette sulle colonne, nell'ordine `[0, 1]`. I conteggi TN, FP, FN e TP sono conservati anche in `metrics.csv`. Le metriche con denominatore nullo vengono riportate come zero.
 
-### Risultati dell'esecuzione inclusa
-
-I valori seguenti provengono da [results/metrics.csv](results/metrics.csv) e si riferiscono all'esecuzione del **15 settembre 2026, ore 09:03:35 UTC**, descritta in [results/summary.txt](results/summary.txt).
+### Risultati dell'esecuzione
 
 La SVM selezionata utilizza **`C=10.0` e `gamma="scale"`**, con F1 di validation pari a **0,7723**. Per la LSTM è stata selezionata l'**epoca 40**, con F1 di validation **0,6286** e loss di validation **0,7133**.
 
