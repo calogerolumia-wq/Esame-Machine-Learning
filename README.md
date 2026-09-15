@@ -51,7 +51,6 @@ Il dataset incluso comprende **29 soggetti** e **594 file CSV**: **505 task util
 | **0 — Non autismo** | Indicazione esplicita di assenza oppure campo diagnostico mancante o vuoto | 15 |
 | **1 — Autismo** | Indicazione esplicita di autismo | 14 |
 
-> **Assunzione sulle etichette:** dei 15 soggetti della classe 0, uno riporta `nessuno` e 14 hanno il campo diagnostico vuoto. L'assegnazione dei campi vuoti alla classe 0 è una convenzione del progetto, non una conferma dell'assenza di autismo.
 
 L'ID serve ad associare i task alla persona e il campo diagnostico determina l'etichetta. **Nessuno dei due viene utilizzato come feature di ingresso.**
 
