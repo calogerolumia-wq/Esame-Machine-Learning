@@ -1,190 +1,301 @@
-# Handwriting: confronto SVM e LSTM
+# ✍️ Handwriting Classification — SVM e LSTM
 
-Il progetto confronta una SVM sulle feature dei task e una LSTM sulle sequenze
-temporali. Ogni CSV produce una predizione; il voto tra i task produce la
-classificazione del soggetto.
+Classificazione di serie temporali di scrittura mediante due approcci: una **Support Vector Machine (SVM)** su feature estratte dai task e una rete **Long Short-Term Memory (LSTM)** sulle sequenze temporali.
 
-## Avvio
+Entrambi i modelli producono una predizione per registrazione. Le predizioni vengono poi aggregate con un **voto di maggioranza** per ottenere la classificazione del soggetto.
 
-Dal terminale nella cartella che contiene `main.py`:
+| | |
+|---|---|
+| **Progetto** | Classificazione di serie temporali di handwriting: confronto tra SVM e LSTM |
+| **Autore** | Calogero Lumia |
+| **Corso** | Machine Learning |
+| **Tecnologie** | Python, scikit-learn, PyTorch |
 
-```powershell
-.venv\Scripts\python.exe main.py
+---
+
+## 📌 Indice
+
+- [Introduzione](#introduzione)
+- [Dataset e preprocessing](#dataset-e-preprocessing)
+- [Requisiti](#requisiti)
+- [Struttura del codice](#struttura-del-codice)
+- [Utilizzo](#utilizzo)
+- [Confronto tra i modelli](#confronto-tra-i-modelli)
+- [Valutazione e risultati](#valutazione-e-risultati)
+- [File generati](#file-generati)
+
+---
+
+<a id="introduzione"></a>
+## 🧠 Introduzione
+
+L'obiettivo è confrontare due rappresentazioni degli stessi dati di handwriting nella classificazione binaria **Autismo / Non autismo**, secondo la codifica delle etichette descritta nella sezione seguente.
+
+La SVM utilizza caratteristiche numeriche che riassumono posizione, pressione e movimento della penna. La LSTM elabora invece la successione temporale dei campioni e apprende una rappresentazione della registrazione durante l'addestramento.
+
+L'unità di classificazione iniziale è il **task**, corrispondente a un intero file CSV. Le righe del CSV sono campioni della stessa sequenza, non esempi indipendenti. Ogni task eredita l'etichetta del soggetto; i task non vengono suddivisi in finestre né concatenati tra loro.
+
+---
+
+<a id="dataset-e-preprocessing"></a>
+## 📂 Dataset e preprocessing
+
+### Organizzazione dei dati
+
+La cartella `data/` contiene, per ciascun soggetto, un file `Anagrafica*.txt` e una sottocartella `Csv/` con le registrazioni. Il caricamento è gestito da [data_loader.py](data_loader.py).
+
+Il dataset incluso comprende **29 soggetti** e **594 file CSV**: **505 task utilizzabili** e **89 CSV vuoti**, esclusi dall'elaborazione. Nell'esecuzione salvata non risultano ulteriori task scartati come non validi.
+
+| Classe | Codifica utilizzata | Soggetti |
+|---|---|---:|
+| **0 — Non autismo** | Indicazione esplicita di assenza oppure campo diagnostico mancante o vuoto | 15 |
+| **1 — Autismo** | Indicazione esplicita di autismo | 14 |
+
+> **Assunzione sulle etichette:** dei 15 soggetti della classe 0, uno riporta `nessuno` e 14 hanno il campo diagnostico vuoto. L'assegnazione dei campi vuoti alla classe 0 è una convenzione del progetto, non una conferma dell'assenza di autismo.
+
+L'ID serve ad associare i task alla persona e il campo diagnostico determina l'etichetta. **Nessuno dei due viene utilizzato come feature di ingresso.**
+
+### Preparazione delle registrazioni
+
+Il lettore utilizza le prime cinque colonne dei CSV: `Timestamp`, `PointX`, `PointY`, `Phase` e `Pressure`. In [preprocessing.py](preprocessing.py) i campioni vengono ordinati cronologicamente; i timestamp non interpretabili sono eliminati e i valori numerici mancanti vengono ricostruiti mediante interpolazione all'interno dello stesso task. Le pressioni negative sono trattate come valori mancanti. Un task con meno di tre campioni validi o un intero canale numerico mancante viene escluso.
+
+Il tempo relativo è ricostruito con un **intervallo nominale di 0,005 secondi** tra campioni, configurabile tramite `sample_interval`. I timestamp originali servono all'ordinamento, non al calcolo degli intervalli temporali: durata, velocità e accelerazione dipendono quindi da questa assunzione.
+
+Il campo `Phase` distingue `Hover`, `BeginStroke`, `MoveStroke` ed `EndStroke`. Da questi eventi si ricavano il contatto della penna (`pen_down`) e gli **stroke**, cioè i singoli tratti di scrittura. La stessa serie pulita viene poi rappresentata come vettore di feature per la SVM e come sequenza ricampionata per la LSTM.
+
+---
+
+<a id="requisiti"></a>
+## 📦 Requisiti
+
+Il progetto utilizza Python e le dipendenze indicate in [requirements.txt](requirements.txt):
+
+| Libreria | Utilizzo |
+|---|---|
+| `numpy` | Calcolo numerico, feature e sequenze |
+| `pandas` | Gestione delle tabelle e dei risultati |
+| `scikit-learn` | SVM, standardizzazione, suddivisione e metriche |
+| `torch` | Rete LSTM e addestramento |
+| `matplotlib` | Matrici di confusione |
+
+L'ambiente registrato nel [riepilogo incluso](results/summary.txt) è **Python 3.12.14 su Linux, con esecuzione su CPU**. Anche la configurazione predefinita del codice utilizza la CPU e non richiede una GPU.
+
+---
+
+<a id="struttura-del-codice"></a>
+## 📁 Struttura del codice
+
+Principali file e cartelle:
+
+```text
+Progetto_SVM_LSTM_Handwriting/
+│
+├── data/                       # Anagrafiche e registrazioni CSV
+├── results/                    # Tabelle, riepilogo e matrici di confusione
+│
+├── main.py                     # Esecuzione dell'intera pipeline
+├── config.py                   # Parametri dell'esperimento
+├── data_loader.py              # Lettura dei dati e assegnazione delle etichette
+├── preprocessing.py            # Pulizia, split per soggetto e sequenze LSTM
+├── feature_engineering.py      # Estrazione delle 22 feature per task
+├── models.py                   # SVM, LSTM e selezione dei modelli
+├── evaluation.py               # Voting, metriche e salvataggio delle tabelle
+├── plots.py                    # Generazione delle matrici di confusione
+├── test_project.py             # Controlli automatici sul codice
+│
+├── requirements.txt            # Dipendenze Python
+└── README.md                   # Descrizione e istruzioni del progetto
 ```
 
-Con l'ambiente virtuale già attivo basta `python main.py`.
-Solo alla prima installazione servono `python -m venv .venv` e
-`.venv\Scripts\python.exe -m pip install -r requirements.txt`.
+---
 
-I parametri si modificano in `config.py`. Per esempio, `epochs` indica il numero
-massimo di epoche e `progress_interval` ogni quante epoche stampare una riga.
-Il comando di avvio esegue direttamente caricamento, addestramento e confronto.
+<a id="utilizzo"></a>
+## ⚙️ Utilizzo
 
-## Codifica delle classi
+### Installazione e avvio — Windows PowerShell
 
-Nel terminale, nei CSV dei risultati e nel grafico sono usate le diciture
-**Classe 0** e **Classe 1**. La corrispondenza è:
+Aprire il terminale nella cartella che contiene `main.py`. Alla prima installazione, creare l'ambiente virtuale e installare le dipendenze:
 
-| Codice | Significato |
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Per eseguire il progetto:
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+Con l'ambiente virtuale già attivo è sufficiente:
+
+```bash
+python main.py
+```
+
+L'avvio esegue caricamento, preprocessing, suddivisione dei soggetti, addestramento dei due modelli, valutazione sul test e salvataggio dei risultati. Non occorrono script di preparazione separati.
+
+### Configurazione
+
+I parametri si modificano nella classe `Settings` di [config.py](config.py), prima dell'avvio. Comprendono il seme casuale (`seed=42`), le quote di validation e test, la griglia SVM, la lunghezza delle sequenze e i parametri di addestramento della LSTM.
+
+Per esempio, `epochs=40` indica le epoche da eseguire e `progress_interval=10` la frequenza di stampa durante il training, oltre alla prima e all'ultima epoca. Lo storico completo viene comunque salvato in `results/lstm_history.csv`.
+
+### Controlli automatici facoltativi
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest test_project.py
+```
+
+I nove test verificano lettura dei CSV, codifica delle etichette, preprocessing, feature, separazione dei soggetti, standardizzazione, voting, uscita della LSTM e coerenza delle tabelle dei risultati. Sono separati dall'esecuzione ordinaria di `main.py`.
+
+---
+
+<a id="confronto-tra-i-modelli"></a>
+## 🔄 Confronto tra i modelli
+
+### Approccio 1 — SVM su feature estratte
+
+[feature_engineering.py](feature_engineering.py) rappresenta ogni task con **22 feature**, calcolate sulla serie pulita prima del ricampionamento:
+
+| Quantità | Caratteristiche | Numero |
+|---|---|---:|
+| X, Y e pressione | Media, deviazione standard, minimo e massimo per canale | 12 |
+| Tempo | Durata nominale del task | 1 |
+| Velocità | Media e massimo del modulo | 2 |
+| Accelerazione | Media e massimo del modulo | 2 |
+| Stroke | Numero dei tratti | 1 |
+| Durata degli stroke | Media, deviazione standard e massimo | 3 |
+| Contatto | Frazione di campioni con penna a contatto | 1 |
+| **Totale** | | **22** |
+
+Le statistiche di posizione e pressione considerano l'intero task, inclusi i campioni `Hover`. Velocità e accelerazione utilizzano invece solo campioni consecutivi dello stesso stroke, escludendo i salti tra tratti diversi. Coordinate e pressione restano nelle unità del dispositivo.
+
+La pipeline in [models.py](models.py) applica `StandardScaler` e una **SVM con kernel RBF**, che permette una frontiera di decisione non lineare. La standardizzazione viene stimata soltanto sul training e riutilizzata su validation e test.
+
+La selezione confronta **nove combinazioni** di iperparametri:
+
+```text
+C     = [0.1, 1.0, 10.0]
+gamma = ["scale", 0.01, 0.1]
+```
+
+`C` controlla la penalizzazione degli errori; `gamma` regola la similarità del kernel. Viene mantenuta la configurazione con il maggiore **F1 dei task di validation**; in caso di parità, la prima incontrata nella griglia. Il confronto avviene sul validation set fisso, non tramite cross-validation.
+
+### Approccio 2 — LSTM sulle sequenze temporali
+
+Ogni registrazione viene ricampionata in **256 istanti** distribuiti dall'inizio alla fine del task. Non vengono mantenuti soltanto i primi 256 campioni: viene rappresentata l'intera estensione temporale del CSV.
+
+I cinque canali sono `time_seconds`, `x`, `y`, `pressure` e `pen_down`. X, Y e pressione sono interpolati linearmente; il contatto utilizza il campione più vicino e rimane binario prima della standardizzazione. Lo scaler dei canali viene stimato esclusivamente sui task di training.
+
+L'architettura definita in [models.py](models.py) è:
+
+```text
+Sequenza (256, 5) -> LSTM (32 unità) -> Strato lineare (32 -> 1) -> Sigmoide
+```
+
+La rete utilizza un unico strato LSTM unidirezionale. L'ultimo stato nascosto produce una probabilità per task: valori **maggiori o uguali a 0,5** vengono assegnati alla classe 1. Lo stato ricorrente riparte da zero per ogni sequenza e non viene trasferito tra CSV.
+
+| Parametro di training | Valore predefinito |
 |---|---|
-| 0 | Non autismo; include anche il campo diagnostico mancante o vuoto |
-| 1 | Autismo |
+| Funzione di perdita | Binary cross-entropy (`BCELoss`) |
+| Ottimizzatore | Adam |
+| Learning rate | `0.001` |
+| Batch size | `16` task |
+| Epoche | `40` |
+| Limite alla norma del gradiente | `1.0` |
 
-I dati inclusi contengono 29 soggetti: 15 della classe 0 e 14 della classe 1.
-Sono utilizzati 505 task; gli altri 89 CSV sono vuoti. La codifica dei campi
-mancanti o vuoti viene applicata automaticamente.
+Vengono eseguite tutte le epoche configurate, conservando i pesi dell'epoca con il maggiore **F1 dei task di validation**. A parità di F1 viene preferita la loss di validation più bassa. Prima del test vengono ripristinati questi pesi: non è previsto un arresto anticipato del training.
 
-## Che cosa mostra il terminale
+### Riepilogo
 
-| Voce | Significato |
+| Caratteristica | SVM | LSTM |
+|---|---|---|
+| Ingresso per task | Vettore di 22 feature | Sequenza di 256 istanti e 5 canali |
+| Rappresentazione | Statistiche e caratteristiche del movimento definite esplicitamente | Rappresentazione appresa dalla successione temporale |
+| Modello | SVM con kernel RBF | LSTM, strato lineare e sigmoide |
+| Selezione su validation | Combinazione di `C` e `gamma` | Pesi dell'epoca migliore |
+| Libreria | scikit-learn | PyTorch |
+
+---
+
+<a id="valutazione-e-risultati"></a>
+## 📊 Valutazione e risultati
+
+### Suddivisione per soggetto
+
+La divisione è stratificata rispetto alla classe ed effettuata **sui soggetti, non sui singoli task**. Tutte le registrazioni di una persona rimangono nello stesso insieme, evitando che lo stesso soggetto compaia sia nel training sia nel test.
+
+Con `seed=42` e quote del 20% per validation e test, la suddivisione inclusa è:
+
+| Insieme | Soggetti | Classe 0 | Classe 1 | Task |
+|---|---:|---:|---:|---:|
+| Training | 17 | 9 | 8 | 291 |
+| Validation | 6 | 3 | 3 | 107 |
+| Test | 6 | 3 | 3 | 107 |
+| **Totale** | **29** | **15** | **14** | **505** |
+
+I due modelli utilizzano gli stessi task e gli stessi gruppi di soggetti. Il training serve all'addestramento, la validation alla selezione dei modelli e il test al confronto finale. Non viene effettuato un successivo riaddestramento su training e validation uniti: il protocollo è un **singolo hold-out**.
+
+### Dal task al soggetto
+
+Le predizioni dei task di ciascuna persona vengono aggregate con **majority voting**: vince la classe con più voti. Ogni task ha lo stesso peso; non si effettua una media delle probabilità. In caso di parità viene assegnata la **classe 0**, secondo `tie_class=0`, senza utilizzare l'etichetta di riferimento.
+
+Per esempio, le decisioni `[1, 1, 0]` producono una classificazione del soggetto pari a `1`. La regola viene applicata separatamente alle predizioni SVM e LSTM in [evaluation.py](evaluation.py).
+
+### Metriche
+
+La valutazione viene effettuata sia sui task sia sui soggetti. **La classe positiva è sempre la classe 1.**
+
+| Metrica | Significato |
 |---|---|
-| Dataset | Quanti soggetti e CSV utilizzabili sono stati caricati |
-| Training | Dati con cui vengono aggiornati i parametri dei modelli |
-| Validation | Dati separati usati per scegliere C e gamma della SVM e l'epoca LSTM |
-| Test | Dati usati dopo le scelte precedenti per il confronto finale |
-| Epoca | Un passaggio completo sui task di training |
-| loss training | Errore medio della rete durante l'epoca, misurato con binary cross-entropy |
-| loss validation | Stessa funzione di errore misurata sui task di validation |
-| F1 validation | F1 dei task di validation, calcolato con soglia 0.5 |
-| LSTM selezionata | L'epoca di cui vengono effettivamente usati i pesi per il test |
+| **Accuracy** | Frazione delle classificazioni corrette sul totale |
+| **Precision** | Tra gli esempi predetti come classe 1, frazione con etichetta 1 |
+| **Recall** | Tra gli esempi con etichetta 1, frazione riconosciuta come classe 1 |
+| **F1** | Media armonica di precision e recall |
 
-I 17 soggetti di training forniscono 291 task. Gli altri due gruppi contengono
-6 soggetti e 107 task ciascuno: hanno la stessa numerosità, ma persone diverse.
-Tutti i task di un soggetto rimangono nello stesso insieme.
+Le matrici di confusione riportano le classi di riferimento sulle righe e quelle predette sulle colonne, nell'ordine `[0, 1]`. I conteggi TN, FP, FN e TP sono conservati anche in `metrics.csv`. Le metriche con denominatore nullo vengono riportate come zero.
 
-Un'epoca non è un nuovo dataset: i 291 task di training vengono utilizzati più
-volte per aggiornare i pesi. Con batch da 16, ogni epoca comprende 19 batch,
-l'ultimo dei quali contiene 3 task. L'ordine dei task può cambiare, quello degli
-istanti dentro ogni CSV rimane invariato.
+### Risultati dell'esecuzione inclusa
 
-La loss non è una percentuale di classificazioni errate. Un valore più basso
-indica un errore minore rispetto alla funzione usata. Precision, recall e F1
-sono invece calcolate dopo aver trasformato le probabilità in decisioni 0/1.
-Per questo loss e F1 possono avere andamenti diversi.
+I valori seguenti provengono da [results/metrics.csv](results/metrics.csv) e si riferiscono all'esecuzione del **15 settembre 2026, ore 09:03:35 UTC**, descritta in [results/summary.txt](results/summary.txt).
 
-F1 pari a zero non è un errore di esecuzione: indica che in quella valutazione
-non vengono riconosciuti correttamente esempi della classe positiva. Non basta,
-da solo, a stabilire che tutte le predizioni siano 0.
+La SVM selezionata utilizza **`C=10.0` e `gamma="scale"`**, con F1 di validation pari a **0,7723**. Per la LSTM è stata selezionata l'**epoca 40**, con F1 di validation **0,6286** e loss di validation **0,7133**.
 
-La LSTM viene selezionata in base al maggiore F1 di validation, usando la loss
-per risolvere le parità. Vengono eseguite tutte le epoche configurate, ma la rete
-restituita ha i pesi dell'epoca selezionata, che può essere precedente all'ultima.
-Il terminale stampa solo la prima epoca, poi una ogni 10 e l'ultima; tutte le
-misure restano disponibili in `lstm_history.csv`.
-
-## Come leggere la tabella finale
-
-| Colonna | Significato |
-|---|---|
-| model / Modello | SVM oppure LSTM |
-| level / Livello | Valutazione sui singoli task oppure sui soggetti dopo il voting |
-| count / N | Numero di elementi valutati: 107 task oppure 6 soggetti |
-| accuracy | Frazione di decisioni corrette sul totale |
-| precision | Fra le decisioni 1, quante hanno etichetta di riferimento 1 |
-| recall | Fra gli esempi con etichetta 1, quanti sono riconosciuti come 1 |
-| f1 | Media armonica di precision e recall |
-
-Le metriche usano 1 come classe positiva. Il valore 0.80 corrisponde all'80%.
-I conteggi TN, FP, FN e TP sono conservati in `metrics.csv` e nelle matrici:
-TN e TP sono decisioni corrette; FP è un riferimento 0 predetto 1; FN è un
-riferimento 1 predetto 0.
-
-### Esempio: esecuzione del 15/09/2026 alle 08:41 UTC
-
-Il run originariamente salvato in `run_20260915_084132_955243` riportava:
-
-| Modello | Livello | Corretti | Accuracy | Precision | Recall | F1 |
+| Modello | Livello | Corretti / totale | Accuracy | Precision | Recall | F1 |
 |---|---|---:|---:|---:|---:|---:|
-| SVM | Task | 78/107 | 72.90% | 81.58% | 58.49% | 68.13% |
-| LSTM | Task | 71/107 | 66.36% | 63.93% | 73.58% | 68.42% |
-| SVM | Soggetti | 4/6 | 66.67% | 100% | 33.33% | 50% |
-| LSTM | Soggetti | 5/6 | 83.33% | 100% | 66.67% | 80% |
+| SVM | Task | 78 / 107 | 72,90% | 81,58% | 58,49% | 68,13% |
+| LSTM | Task | 74 / 107 | 69,16% | 66,67% | 75,47% | 70,80% |
+| SVM | Soggetti | 4 / 6 | 66,67% | 100,00% | 33,33% | 50,00% |
+| LSTM | Soggetti | 6 / 6 | 100,00% | 100,00% | 100,00% | 100,00% |
 
-In quell'esecuzione la LSTM selezionata era l'epoca **25**, con F1 di validation
-**0.6226**. All'epoca 40 F1 era 0.5882: sono quindi stati ripristinati i pesi
-precedentemente conservati all'epoca 25.
+In questa esecuzione la SVM ottiene accuracy e precision maggiori sui task, mentre la LSTM raggiunge recall e F1 maggiori. Dopo il voting, la LSTM classifica correttamente tutti e sei i soggetti del test, mentre la SVM ne classifica correttamente quattro. L'aggregazione spiega perché una maggiore accuracy sui task non comporti necessariamente una maggiore accuracy sui soggetti.
 
-La SVM aveva più task corretti, mentre la LSTM riconosceva più soggetti dopo il
-voting. È possibile perché un soggetto può essere classificato correttamente
-anche se alcuni suoi task sono errati: conta la maggioranza dei voti. Per
-esempio, tre decisioni [1, 1, 0] danno una decisione finale 1.
+![Matrici di confusione di SVM e LSTM sui task e sui soggetti del test](results/confusion_matrices.png)
 
-Il calo della loss di training insieme a una loss di validation più alta nelle
-ultime epoche suggerisce overfitting: la rete migliora sui dati usati per
-addestrarla senza un miglioramento analogo sui dati di validation. La scelta
-si basa comunque sul criterio F1 definito in anticipo.
+> La tabella nel README è un riferimento statico all'esecuzione indicata. Una nuova esecuzione aggiorna i file in `results/`, incluso il grafico, ma non questa tabella. Per i nuovi valori consultare `summary.txt` e `metrics.csv`. Versioni delle librerie o piattaforme diverse possono produrre differenze numeriche anche con lo stesso seme.
 
-I valori di questo esempio appartengono a quel run. Ogni nuova esecuzione
-riporta i propri risultati in `summary.txt`; versioni delle librerie e piattaforme
-diverse possono produrre differenze numeriche. Con soli 6 soggetti di test,
-una decisione cambia l'accuracy di circa 16.7 punti percentuali.
+### Limiti del confronto
 
-## Come viene creata la cartella results
+Il test contiene soltanto **sei soggetti**: una diversa classificazione modifica l'accuracy per soggetto di circa **16,7 punti percentuali**. Inoltre, i task della stessa persona non sono osservazioni indipendenti e chi ha più registrazioni pesa maggiormente nelle metriche per task. Il risultato del 100% della LSTM riguarda quindi questo specifico hold-out, non dimostra una superiorità generale del modello.
 
-`main.py` ricava la propria posizione e imposta `output_dir = root / "results"`.
-Al termine del confronto chiama `save_results`, in `evaluation.py`, che crea la
-cartella con `mkdir(parents=True, exist_ok=True)` e salva le tabelle con `to_csv`
-e il riepilogo con `write_text`. `plots.py` salva il PNG con `savefig`.
+Restano rilevanti l'assegnazione dei 14 campi diagnostici vuoti alla classe 0, l'uso del tempo nominale e la possibile perdita di dettagli nel ricampionamento a 256 istanti. I risultati descrivono un esperimento sul dataset disponibile e **non costituiscono una validazione diagnostica**.
 
-La cartella ora contiene **sette file**, direttamente al suo interno:
+---
 
-| File | Contenuto e uso |
+<a id="file-generati"></a>
+## 💾 File generati
+
+Al termine dell'esecuzione vengono creati o aggiornati **sette file** direttamente nella cartella `results/`:
+
+| File | Contenuto |
 |---|---|
-| `summary.txt` | Punto di partenza: dati usati, modelli selezionati, metriche, parametri, ambiente e legenda dei file |
-| `metrics.csv` | Quattro righe di confronto: due modelli per due livelli, con metriche e conteggi della matrice |
-| `task_predictions.csv` | Una riga per task del test: `subject_id`, `task_id`, `label`, `svm_prediction`, `lstm_prediction` |
-| `subject_predictions.csv` | Una riga per soggetto del test: label, numero di task, voti per le due classi, pareggi e decisioni SVM/LSTM |
-| `subject_split.csv` | Una riga per soggetto: ID di lavoro, ID originale, label, insieme di appartenenza e numero di task |
-| `lstm_history.csv` | Tutte le epoche con `train_loss`, `validation_loss`, `validation_f1` |
-| `confusion_matrices.png` | Un'immagine con quattro matrici: SVM e LSTM, per task e soggetto; righe = riferimento, colonne = predizione |
+| [summary.txt](results/summary.txt) | Riepilogo del dataset, suddivisione, modelli selezionati, metriche, parametri e ambiente |
+| [metrics.csv](results/metrics.csv) | Confronto dei due modelli per task e per soggetto, con metriche e conteggi delle matrici |
+| [task_predictions.csv](results/task_predictions.csv) | Etichetta e predizioni SVM/LSTM per ogni task del test |
+| [subject_predictions.csv](results/subject_predictions.csv) | Voti, eventuali pareggi e classificazioni finali dei soggetti del test |
+| [subject_split.csv](results/subject_split.csv) | Assegnazione dei soggetti a training, validation e test, con ID e numero di task |
+| [lstm_history.csv](results/lstm_history.csv) | Loss di training, loss di validation e F1 di validation per ogni epoca |
+| [confusion_matrices.png](results/confusion_matrices.png) | Le quattro matrici di confusione in un'unica immagine |
 
-Nei file di predizione, `label` è il riferimento associato all'anagrafica e
-`prediction` è la decisione del modello. Per i soggetti, `svm_class_1_votes`
-conta quanti task la SVM ha assegnato a 1; il prefisso `lstm_` indica gli stessi
-conteggi per la rete. `tie=True` segnala la parità, risolta con la classe 0.
-
-**Ogni esecuzione completata aggiorna gli stessi sette file.** Per conservare
-un risultato precedente, copiare o rinominare la cartella prima di un nuovo avvio.
-Le vecchie cartelle `run_...` già presenti sul computer non vengono cancellate
-automaticamente dal programma.
-
-La precedente versione creava una sottocartella per ogni esecuzione usando
-la data e l'ora UTC nel nome. Per esempio, `20260915_084132_955243` significava
-15 settembre 2026, ore 08:41:32, con la parte finale riservata ai microsecondi.
-Quei nomi servivano a conservare separati i vari avvii.
-
-### A cosa servivano gli altri file della versione precedente
-
-| File precedenti | Funzione e gestione attuale |
-|---|---|
-| `RESULTS.md` | Riepilogo; sostituito da `summary.txt`, leggibile anche con Blocco note |
-| `svm_task_predictions.csv`, `lstm_task_predictions.csv` | Predizioni separate; ora affiancate in `task_predictions.csv` |
-| `svm_subject_predictions.csv`, `lstm_subject_predictions.csv` | Voti separati; ora riuniti in `subject_predictions.csv` |
-| `subject_inventory.csv`, `subject_split.csv` | Anagrafica operativa e divisione; ora l'essenziale è in `subject_split.csv` |
-| `task_audit.csv`, `dataset_summary.json` | Controlli e conteggi dei CSV; il riepilogo conserva i conteggi complessivi |
-| `task_features.csv`, `feature_names.json` | Feature estratte e loro nomi; ora vengono utilizzate in memoria senza salvarle |
-| `svm_validation.csv` | Configurazioni SVM provate; ora elencate in `summary.txt` |
-| `run_config.json`, `environment.json` | Parametri e versioni delle librerie; ora riportati in `summary.txt` |
-| `svm_model.joblib`, `sequence_scaler.joblib`, `lstm_model.pt` | Modelli e scaler per un futuro riutilizzo; ora rimangono in memoria durante il confronto |
-| `model_comparison.png`, `lstm_training.png` | Grafici aggiuntivi; metriche e storico rimangono nei rispettivi CSV |
-| `execution.log` | Copia dell'output del terminale nell'esempio distribuito; non era creato dal normale `main.py` |
-
-## Che cosa fa ciascun file Python
-
-| File | Responsabilità |
-|---|---|
-| `main.py` | Coordina il flusso completo: dati, divisione, due rappresentazioni, training, test e salvataggio |
-| `config.py` | Contiene `Settings`: seme, quote dei dati, lunghezza delle sequenze, dimensione LSTM, epoche, parametri SVM e frequenza di stampa |
-| `data_loader.py` | Legge anagrafiche e CSV; applica le label; mantiene separato ogni task ed esclude i CSV vuoti |
-| `preprocessing.py` | Ordina e pulisce i campioni, individua gli stroke, ricampiona le sequenze, standardizza i canali e divide i soggetti |
-| `feature_engineering.py` | Produce 22 feature per ogni task: statistiche, durata, velocità, accelerazione e caratteristiche degli stroke |
-| `models.py` | Definisce la rete LSTM, addestra i due modelli, sceglie la configurazione SVM e i pesi dell'epoca LSTM migliore |
-| `evaluation.py` | Combina i voti dei task, calcola le metriche, affianca i risultati dei due modelli e scrive i sei file di testo/CSV |
-| `plots.py` | Disegna e salva le quattro matrici di confusione in un unico PNG |
-| `test_project.py` | Controlli facoltativi del codice; non fa parte dei passaggi necessari per avviare il confronto |
-
-`requirements.txt` elenca i pacchetti necessari. `GUIDA_PROGETTO.md` spiega
-preprocessing, feature e modelli con le formule. Per leggere il codice conviene
-partire dai passaggi numerati di `main.py`, aprendo poi la funzione chiamata
-nel relativo file. I commenti descrivono il ruolo dei dati, le forme degli array,
-le operazioni sui pesi e le ragioni delle scelte principali.
+**Ogni esecuzione completata sovrascrive gli stessi sette file.** Per conservare un esperimento precedente, copiare o rinominare `results/` prima del nuovo avvio. Il programma non crea sottocartelle `run_*` e non salva su disco i modelli addestrati o gli scaler, che rimangono in memoria durante il confronto.
