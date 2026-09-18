@@ -33,7 +33,7 @@ L'obiettivo è confrontare due rappresentazioni degli stessi dati di handwriting
 
 La SVM utilizza caratteristiche numeriche che riassumono posizione, pressione e movimento della penna. La LSTM elabora invece la successione temporale dei campioni e apprende una rappresentazione della registrazione durante l'addestramento.
 
-L'unità di classificazione iniziale è il **task**, corrispondente a un intero file CSV. Le righe del CSV sono campioni della stessa sequenza, non esempi indipendenti. Ogni task eredita l'etichetta del soggetto; i task non vengono suddivisi in finestre né concatenati tra loro.
+L'unità di classificazione iniziale è il **task**. Ogni task eredita l'etichetta del soggetto.
 
 ---
 
